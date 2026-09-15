@@ -32,13 +32,23 @@
 - name: Install generic kernel headers if current kernel headers unavailable
   when: amneziawg__kernel_headers_available.rc != 0
   block:
-    - name: Install linux-generic package for kernel and headers
+    # linux-generic and linux-headers-generic are Ubuntu package names and do
+    # not exist on Debian at all, so this fallback used to fail there with a
+    # plain "no such package". On a minimal Debian install
+    # linux-headers-$(uname -r) is frequently absent too, and the right answer
+    # is the architecture metapackage: linux-headers-amd64 and friends.
+    - name: Install kernel and headers metapackages
       ansible.builtin.apt:
-        name:
-          - linux-generic
-          - linux-headers-generic
+        name: "{{ ['linux-generic', 'linux-headers-generic']
+          if ansible_distribution == 'Ubuntu'
+          else ['linux-image-' ~ amneziawg__deb_arch,
+                'linux-headers-' ~ amneziawg__deb_arch] }}"
         state: present
       become: true
+      vars:
+        amneziawg__deb_arch: "{{ ansible_facts['architecture']
+          | replace('x86_64', 'amd64')
+          | replace('aarch64', 'arm64') }}"
 
     - name: Get latest installed kernel version
       ansible.builtin.shell: |
@@ -86,18 +96,62 @@
         - amneziawg_auto_reboot | bool
       ansible.builtin.setup:
 
-- name: Add AmneziaWG PPA repository
-  ansible.builtin.apt_repository:
-    repo: 'ppa:amnezia/ppa'
+# Ubuntu and Debian need different handling, and conflating them is how this
+# silently failed before: `add-apt-repository ppa:` talks to Launchpad and
+# exists only on Ubuntu, so on Debian the step added nothing at all and the
+# packages then came from nowhere.
+#
+# There is no Debian-native AmneziaWG repository. The working approach is to
+# point Debian at the Launchpad PPA directly, using the nearest Ubuntu suite:
+# bookworm -> focal, trixie -> noble. Suites that publish no packages return
+# 404 on dists/<suite>/Release, so an unknown codename falls back to noble,
+# which is the LTS the DKMS module builds against cleanly.
+- name: Work out which PPA suite to use
+  ansible.builtin.set_fact:
+    amneziawg__ppa_suite: >-
+      {{ ansible_facts['distribution_release']
+         if ansible_distribution == 'Ubuntu'
+         else amneziawg_debian_ppa_suite_map[ansible_facts['distribution_release']]
+              | default(amneziawg_debian_ppa_suite_default) }}
+
+- name: Report the chosen PPA suite
+  ansible.builtin.debug:
+    msg: "{{ ansible_distribution }} {{ ansible_facts['distribution_release'] }}
+      -> PPA suite {{ amneziawg__ppa_suite }}"
+
+- name: Install the PPA signing key
+  # Fetched by fingerprint rather than trusting whatever a keyserver hands
+  # back for a name.
+  ansible.builtin.get_url:
+    url: "{{ amneziawg_ppa_key_url }}"
+    dest: "{{ amneziawg_ppa_keyring }}"
+    mode: '0644'
+    owner: root
+    group: root
+  become: true
+
+- name: Add the AmneziaWG repository
+  ansible.builtin.deb822_repository:
+    name: amnezia-ppa
+    types: [deb]
+    uris: "{{ amneziawg_ppa_uri }}"
+    suites: ["{{ amneziawg__ppa_suite }}"]
+    components: [main]
+    signed_by: "{{ amneziawg_ppa_keyring }}"
     state: present
-    filename: amneziawg
+    enabled: true
+  become: true
+  register: amneziawg__repo_added
+
+- name: Refresh the package list after adding the repository
+  when: amneziawg__repo_added is changed
+  ansible.builtin.apt:
+    update_cache: true
   become: true
 
 - name: Install AmneziaWG packages
   ansible.builtin.apt:
-    name:
-      - amneziawg
-      - amneziawg-tools
+    name: '{{ amneziawg_debian_packages }}'
     state: '{{ amneziawg_state }}'
     update_cache: true
   become: true

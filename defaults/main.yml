@@ -2,6 +2,40 @@
 # defaults/main.yml - Default variables for amneziawg role
 
 # Installation settings
+# Set to false on hosts where the packages are already in place and the
+# mirror is not reachable -- some routers cannot run pacman -Sy at all.
+amneziawg_install: true
+
+# Arch Linux package names. amneziawg-go is the userspace implementation and
+# is kept alongside the DKMS module because both are installed on our routers.
+# Debian/Ubuntu package names. amneziawg is the metapackage, amneziawg-dkms
+# builds the kernel module, amneziawg-tools is the userland.
+# A client does not need a fixed source port, and pinning one can collide or
+# break NAT traversal. Left empty the line is omitted entirely; set it only
+# on a host that actually listens.
+amneziawg_listen_port: ''
+
+amneziawg_debian_packages:
+  - 'amneziawg'
+  - 'amneziawg-tools'
+
+# Debian has no repository of its own, so it uses the Launchpad PPA with the
+# nearest Ubuntu suite. Ubuntu uses its own codename and ignores this map.
+amneziawg_debian_ppa_suite_map:
+  bookworm: 'focal'
+  trixie: 'noble'
+amneziawg_debian_ppa_suite_default: 'noble'
+
+amneziawg_ppa_uri: 'https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu'
+amneziawg_ppa_keyring: '/etc/apt/keyrings/amnezia-ppa.asc'
+amneziawg_ppa_key_fingerprint: '75C9DD72C799870E310542E24166F2C257290828'
+amneziawg_ppa_key_url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x{{ amneziawg_ppa_key_fingerprint }}"
+
+amneziawg_archlinux_packages:
+  - 'amneziawg-tools'
+  - 'amneziawg-dkms'
+  - 'amneziawg-go'
+
 amneziawg_state: 'present'
 amneziawg_update_cache: true
 amneziawg_auto_reboot: false  # Set to true to allow automatic reboot when kernel upgrade is needed
@@ -47,12 +81,23 @@ amneziawg_jmax: 0  # Maximum junk packet size (must be < MTU)
 # Message padding
 amneziawg_s1: 0  # Padding for handshake init message
 amneziawg_s2: 0  # Padding for handshake response message
+amneziawg_s3: 0  # Padding for transport message (AmneziaWG 1.5+)
+amneziawg_s4: 0  # Padding for transport response (AmneziaWG 1.5+)
 
 # Header obfuscation (replace WireGuard's distinctive type field)
 amneziawg_h1: 0  # Header for handshake init (int or 'x-y' range)
 amneziawg_h2: 0  # Header for handshake response
 amneziawg_h3: 0  # Header for cookie message
 amneziawg_h4: 0  # Header for transport messages
+
+# Signature packets I1-I5 (AmneziaWG 1.5+/3.x). Free-form strings, e.g.
+# '<r 3><b 0x6353...>'. Empty means the parameter is omitted entirely; these
+# must match the server exactly or the handshake never completes.
+amneziawg_i1: ''
+amneziawg_i2: ''
+amneziawg_i3: ''
+amneziawg_i4: ''
+amneziawg_i5: ''
 
 # Unmanaged peers (peers not in ansible inventory)
 # amneziawg_unmanaged_peers:

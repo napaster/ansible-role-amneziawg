@@ -214,3 +214,75 @@ MIT
 ## Author
 
 akme
+
+## Fork changes (napaster)
+
+This fork adds what our routers actually need:
+
+### AmneziaWG 1.5+/3.x obfuscation
+
+Upstream stops at `S1`/`S2` and `H1`-`H4`. Four of our five tunnels also use
+`S3`/`S4` and the `I1`-`I3` signature packets, and those have to match the
+server exactly or the handshake never completes.
+
+| variable | meaning |
+|---|---|
+| `amneziawg_s3`, `amneziawg_s4` | transport message padding |
+| `amneziawg_i1` … `amneziawg_i5` | signature packets, free-form strings such as `<r 3><b 0x6353…>` |
+
+The `I` parameters are emitted verbatim whenever non-empty — an integer test
+would reject them.
+
+### Arch Linux
+
+`tasks/main.yml` used to send everything that was not Debian into the RedHat
+tasks, which died inside `dnf`. Dispatch is now explicit per family, an
+unknown family fails with a readable message, and `install-archlinux.yml`
+installs `amneziawg-tools`, `amneziawg-dkms` and `amneziawg-go`
+(`amneziawg_archlinux_packages`), picks kernel headers from the running
+kernel — `linux-lts-headers` when the host runs the LTS kernel — and loads
+the module, which DKMS does not do on first install.
+
+### Ubuntu and Debian are no longer conflated
+
+`add-apt-repository ppa:` talks to Launchpad and exists only on Ubuntu, so on
+Debian the PPA step silently added nothing and the packages came from nowhere.
+
+There is no Debian-native AmneziaWG repository. Debian now points at the same
+Launchpad PPA using the nearest Ubuntu suite — `bookworm` → `focal`,
+`trixie` → `noble`, anything else → `noble`, which is the LTS the DKMS module
+builds against cleanly. Suites that publish nothing return 404 on
+`dists/<suite>/Release`, which is why the fallback matters.
+
+The source is written as deb822 with `Signed-By`, and the key is fetched by
+fingerprint (`75C9DD72C799870E310542E24166F2C257290828`) rather than by
+trusting whatever a keyserver returns for a name.
+
+| variable | default |
+|---|---|
+| `amneziawg_debian_ppa_suite_map` | `{bookworm: focal, trixie: noble}` |
+| `amneziawg_debian_ppa_suite_default` | `noble` |
+| `amneziawg_ppa_uri` | `https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu` |
+| `amneziawg_ppa_key_fingerprint` | `75C9DD…257290828` |
+
+Kernel headers: `linux-generic`/`linux-headers-generic` are Ubuntu package
+names and do not exist on Debian, so that fallback used to fail outright.
+Debian now falls back to the architecture metapackages
+(`linux-image-amd64`, `linux-headers-amd64`), which is what a minimal install
+actually needs when `linux-headers-$(uname -r)` is absent.
+
+### Client-side fixes
+
+* `amneziawg_install: false` — configure a host whose packages are already in
+  place. Some of our routers cannot reach their mirror at all.
+* `ListenPort` is emitted only when `amneziawg_listen_port` is set. A client
+  does not need a fixed source port, and pinning one can collide or interfere
+  with NAT traversal.
+* `PrivateKey` falls back to `amneziawg_private_key` when the generated fact
+  is absent, so `--tags amneziawg-config` works on a host whose keys were
+  issued elsewhere.
+
+### Verified
+
+Rendered against a live router with its real parameters and compared to the
+running config: 19 `[Interface]` and 5 `[Peer]` values, identical.
