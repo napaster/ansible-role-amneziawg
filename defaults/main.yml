@@ -19,15 +19,17 @@ amneziawg_debian_packages:
   - 'amneziawg'
   - 'amneziawg-tools'
 
-# Ubuntu takes the packages from the upstream Launchpad PPA.
-amneziawg_ubuntu_ppa: 'ppa:amnezia/ppa'
+# Debian has no repository of its own, so it uses the Launchpad PPA with the
+# nearest Ubuntu suite. Ubuntu uses its own codename and ignores this map.
+amneziawg_debian_ppa_suite_map:
+  bookworm: 'focal'
+  trixie: 'noble'
+amneziawg_debian_ppa_suite_default: 'noble'
 
-# Debian has no upstream repository. Set both to the source this host should
-# use; left empty the role fails with an explanation rather than adding a
-# Launchpad PPA that Debian cannot resolve.
-amneziawg_apt_repo: ''
-amneziawg_apt_key_url: ''
-amneziawg_apt_key_path: '/etc/apt/trusted.gpg.d/amneziawg.asc'
+amneziawg_ppa_uri: 'https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu'
+amneziawg_ppa_keyring: '/etc/apt/keyrings/amnezia-ppa.asc'
+amneziawg_ppa_key_fingerprint: '75C9DD72C799870E310542E24166F2C257290828'
+amneziawg_ppa_key_url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x{{ amneziawg_ppa_key_fingerprint }}"
 
 amneziawg_archlinux_packages:
   - 'amneziawg-tools'

@@ -245,11 +245,31 @@ the module, which DKMS does not do on first install.
 
 ### Ubuntu and Debian are no longer conflated
 
-`add-apt-repository ppa:` talks to Launchpad and exists only on Ubuntu, so
-on Debian the PPA step silently added nothing and the packages came from
-nowhere. Ubuntu keeps `amneziawg_ubuntu_ppa`; Debian takes
-`amneziawg_apt_repo` plus `amneziawg_apt_key_url`, and the role fails with an
-explanation if neither is set rather than pretending.
+`add-apt-repository ppa:` talks to Launchpad and exists only on Ubuntu, so on
+Debian the PPA step silently added nothing and the packages came from nowhere.
+
+There is no Debian-native AmneziaWG repository. Debian now points at the same
+Launchpad PPA using the nearest Ubuntu suite — `bookworm` → `focal`,
+`trixie` → `noble`, anything else → `noble`, which is the LTS the DKMS module
+builds against cleanly. Suites that publish nothing return 404 on
+`dists/<suite>/Release`, which is why the fallback matters.
+
+The source is written as deb822 with `Signed-By`, and the key is fetched by
+fingerprint (`75C9DD72C799870E310542E24166F2C257290828`) rather than by
+trusting whatever a keyserver returns for a name.
+
+| variable | default |
+|---|---|
+| `amneziawg_debian_ppa_suite_map` | `{bookworm: focal, trixie: noble}` |
+| `amneziawg_debian_ppa_suite_default` | `noble` |
+| `amneziawg_ppa_uri` | `https://ppa.launchpadcontent.net/amnezia/ppa/ubuntu` |
+| `amneziawg_ppa_key_fingerprint` | `75C9DD…257290828` |
+
+Kernel headers: `linux-generic`/`linux-headers-generic` are Ubuntu package
+names and do not exist on Debian, so that fallback used to fail outright.
+Debian now falls back to the architecture metapackages
+(`linux-image-amd64`, `linux-headers-amd64`), which is what a minimal install
+actually needs when `linux-headers-$(uname -r)` is absent.
 
 ### Client-side fixes
 
