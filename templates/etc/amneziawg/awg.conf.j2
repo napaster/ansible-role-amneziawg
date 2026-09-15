@@ -3,8 +3,10 @@
 
 [Interface]
 Address = {{ amneziawg_addresses | join(', ') }}
-ListenPort = {{ amneziawg_port }}
-PrivateKey = {{ amneziawg__fact_private_key }}
+{% if amneziawg_listen_port | default(amneziawg_port if amneziawg_as_hub | default(false) else '') %}
+ListenPort = {{ amneziawg_listen_port | default(amneziawg_port) }}
+{% endif %}
+PrivateKey = {{ amneziawg__fact_private_key | default(amneziawg_private_key) }}
 {% if amneziawg_dns is defined and amneziawg_dns %}
 DNS = {{ amneziawg_dns }}
 {% endif %}
@@ -32,6 +34,12 @@ S1 = {{ amneziawg_s1 }}
 {% if amneziawg_s2 | int > 0 %}
 S2 = {{ amneziawg_s2 }}
 {% endif %}
+{% if amneziawg_s3 | int > 0 %}
+S3 = {{ amneziawg_s3 }}
+{% endif %}
+{% if amneziawg_s4 | int > 0 %}
+S4 = {{ amneziawg_s4 }}
+{% endif %}
 {% if amneziawg_h1 | int > 0 or (amneziawg_h1 is string and '-' in amneziawg_h1) %}
 H1 = {{ amneziawg_h1 }}
 {% endif %}
@@ -44,6 +52,15 @@ H3 = {{ amneziawg_h3 }}
 {% if amneziawg_h4 | int > 0 or (amneziawg_h4 is string and '-' in amneziawg_h4) %}
 H4 = {{ amneziawg_h4 }}
 {% endif %}
+{# Signature packets I1-I5 (AmneziaWG 1.5+/3.x). Free-form strings such as
+   <r 3><b 0x...>, so they are emitted verbatim whenever non-empty -- an int
+   test would reject them. #}
+{% for n in range(1, 6) %}
+{% set ival = lookup('ansible.builtin.vars', 'amneziawg_i' ~ n, default='') %}
+{% if ival %}
+I{{ n }} = {{ ival }}
+{% endif %}
+{% endfor %}
 {% if amneziawg_preup is defined and amneziawg_preup %}
 {% for cmd in amneziawg_preup %}
 PreUp = {{ cmd }}

@@ -16,9 +16,31 @@
   ansible.builtin.include_tasks:
     file: '{{ amneziawg__install_tasks }}'
   vars:
+    amneziawg__install_tasks_by_family:
+      Debian: 'install-debian.yml'
+      RedHat: 'install-redhat.yml'
+      Archlinux: 'install-archlinux.yml'
     amneziawg__install_tasks: >-
-      {{ 'install-debian.yml' if ansible_os_family == 'Debian' else
-         'install-redhat.yml' }}
+      {{ amneziawg__install_tasks_by_family[ansible_os_family]
+         | default('') }}
+  when:
+    - amneziawg_install | bool
+    - amneziawg__install_tasks | length > 0
+  tags:
+    - amneziawg
+    - amneziawg-install
+
+# Previously every family that was not Debian fell through to the RedHat
+# tasks and died inside dnf. An unknown family now says so plainly.
+- name: Fail on an unsupported OS family
+  ansible.builtin.fail:
+    msg: "amneziawg: no installation tasks for OS family
+      '{{ ansible_os_family }}'. Supported: Debian, RedHat, Archlinux.
+      Set amneziawg_install: false to configure a host where the packages
+      are already installed."
+  when:
+    - amneziawg_install | bool
+    - ansible_os_family not in ['Debian', 'RedHat', 'Archlinux']
   tags:
     - amneziawg
     - amneziawg-install

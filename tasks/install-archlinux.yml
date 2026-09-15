@@ -1,0 +1,37 @@
+---
+# tasks/install-archlinux.yml - Install AmneziaWG on Arch Linux
+#
+# Arch has no official AmneziaWG packages; they come from AUR or from a local
+# repository built in-house. The package names below match the AUR ones and
+# the builds we host ourselves. If a host takes them from a private repo,
+# that repo has to be in /etc/pacman.conf already -- this role does not touch
+# pacman configuration, and on some routers the mirror is unreachable anyway,
+# which is why amneziawg_state can be set to skip the whole install.
+
+- name: Install kernel headers for the running kernel
+  # DKMS needs headers matching the kernel actually booted, which on Arch may
+  # be linux, linux-lts or a custom one. Derive the package from uname rather
+  # than guessing.
+  ansible.builtin.package:
+    name: "{{ 'linux-lts-headers'
+      if 'lts' in ansible_facts['kernel']
+      else 'linux-headers' }}"
+    state: present
+  become: true
+
+- name: Install AmneziaWG packages
+  community.general.pacman:
+    name: "{{ amneziawg_archlinux_packages }}"
+    state: "{{ 'present' if amneziawg_state == 'present' else amneziawg_state }}"
+    update_cache: "{{ amneziawg_update_cache | bool }}"
+  become: true
+  register: amneziawg__packages_installed
+
+- name: Load the amneziawg kernel module
+  # The DKMS build does not load the module by itself on first install, and
+  # awg-quick fails with a bare "Unable to access interface" if it is missing.
+  community.general.modprobe:
+    name: amneziawg
+    state: present
+  become: true
+  failed_when: false

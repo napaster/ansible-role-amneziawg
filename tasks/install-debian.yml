@@ -86,18 +86,55 @@
         - amneziawg_auto_reboot | bool
       ansible.builtin.setup:
 
-- name: Add AmneziaWG PPA repository
+# Ubuntu and Debian need different sources, and conflating them is how this
+# silently failed before. `add-apt-repository ppa:` talks to Launchpad and
+# exists only on Ubuntu; on Debian it is either absent or a no-op, and the
+# packages then come from nowhere.
+- name: Add AmneziaWG PPA repository (Ubuntu)
+  when: ansible_distribution == 'Ubuntu'
   ansible.builtin.apt_repository:
-    repo: 'ppa:amnezia/ppa'
+    repo: '{{ amneziawg_ubuntu_ppa }}'
     state: present
     filename: amneziawg
   become: true
 
+# Debian has no upstream repository of its own. Point amneziawg_apt_repo at
+# whatever source the host should use -- a mirror of the PPA, a private repo,
+# or a locally built one -- together with its signing key. Refusing to guess
+# beats adding a source that resolves to nothing.
+- name: Add AmneziaWG repository (Debian)
+  when:
+    - ansible_distribution != 'Ubuntu'
+    - amneziawg_apt_repo | length > 0
+  block:
+    - name: Install the repository signing key
+      when: amneziawg_apt_key_url | length > 0
+      ansible.builtin.get_url:
+        url: '{{ amneziawg_apt_key_url }}'
+        dest: '{{ amneziawg_apt_key_path }}'
+        mode: '0644'
+      become: true
+
+    - name: Add the repository
+      ansible.builtin.apt_repository:
+        repo: '{{ amneziawg_apt_repo }}'
+        state: present
+        filename: amneziawg
+      become: true
+
+- name: Fail when Debian has no repository configured
+  when:
+    - ansible_distribution != 'Ubuntu'
+    - amneziawg_apt_repo | length == 0
+  ansible.builtin.fail:
+    msg: "amneziawg: on Debian there is no upstream repository to add. Set
+      amneziawg_apt_repo (and amneziawg_apt_key_url) to the source this host
+      should use, or set amneziawg_install: false if the packages are already
+      installed."
+
 - name: Install AmneziaWG packages
   ansible.builtin.apt:
-    name:
-      - amneziawg
-      - amneziawg-tools
+    name: '{{ amneziawg_debian_packages }}'
     state: '{{ amneziawg_state }}'
     update_cache: true
   become: true
