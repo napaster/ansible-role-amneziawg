@@ -49,7 +49,7 @@ amneziawg_addresses:
 
 # Optional
 amneziawg_endpoint: 'vpn1.example.com'  # Public endpoint (empty = spoke/client)
-amneziawg_private_key: ''                # Auto-generated if empty
+amneziawg_private_key: ''                # Wins over the key in an existing config; auto-generated if empty everywhere
 amneziawg_persistent_keepalive: '25'
 amneziawg_dns: '1.1.1.1'
 amneziawg_mtu: ''
@@ -281,6 +281,13 @@ actually needs when `linux-headers-$(uname -r)` is absent.
 * `PrivateKey` falls back to `amneziawg_private_key` when the generated fact
   is absent, so `--tags amneziawg-config` works on a host whose keys were
   issued elsewhere.
+* Private key precedence: `amneziawg_private_key` from vars/vault first, then
+  the `PrivateKey` already in the host's config, then `awg genkey`. Before
+  this a provided key was used only on first install: re-issuing a client
+  (new key from the panel) left the old key in place and the server dropped
+  the handshake. Key-handling tasks run under `no_log`, and the public key is
+  derived via stdin, so the private key never reaches ansible output or the
+  host's process list.
 
 ### Verified
 

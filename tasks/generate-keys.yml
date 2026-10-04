@@ -1,16 +1,35 @@
 ---
 # tasks/generate-keys.yml - Generate and manage AmneziaWG keys
+#
+# Приоритет приватного ключа:
+#   1. amneziawg_private_key из vars/vault — всегда, даже если на хосте уже есть
+#      конфиг со старым ключом. Иначе смена клиента (новый ключ из панели)
+#      молча не применяется: роль переписывает конфиг, а ключ оставляет старый,
+#      и сервер отбрасывает хендшейк.
+#   2. PrivateKey из существующего конфига — чтобы прогон роли без ключа в vars
+#      не перегенерировал живой туннель.
+#   3. Новый ключ (awg genkey).
+#
+# Задачи с приватным ключом под no_log: при -v или ошибке ключ не должен
+# попасть в вывод.
 
-- name: Check if config file exists
-  ansible.builtin.stat:
-    path: '{{ amneziawg_remote_directory }}/{{ amneziawg_interface }}.conf'
-  register: amneziawg__config_file
-  become: true
+- name: Use provided private key
+  when: amneziawg_private_key is defined and amneziawg_private_key | length > 0
+  ansible.builtin.set_fact:
+    amneziawg__fact_private_key: '{{ amneziawg_private_key }}'
+  no_log: true
 
-- name: Read existing private key from config
-  when: amneziawg__config_file.stat.exists
+- name: Reuse private key from existing config
+  when: amneziawg__fact_private_key is not defined
   block:
+    - name: Check if config file exists
+      ansible.builtin.stat:
+        path: '{{ amneziawg_remote_directory }}/{{ amneziawg_interface }}.conf'
+      register: amneziawg__config_file
+      become: true
+
     - name: Get private key from existing config
+      when: amneziawg__config_file.stat.exists
       ansible.builtin.shell: |
         set -euo pipefail
         grep -E '^PrivateKey\s*=' {{ amneziawg_remote_directory }}/{{ amneziawg_interface }}.conf | sed 's/^PrivateKey\s*=\s*//' | tr -d ' '
@@ -18,43 +37,40 @@
         executable: /bin/bash
       register: amneziawg__existing_private_key
       changed_when: false
+      failed_when: false
       become: true
+      no_log: true
 
     - name: Set private key fact from existing config
+      when: amneziawg__existing_private_key.stdout | default('') | length > 0
       ansible.builtin.set_fact:
         amneziawg__fact_private_key: '{{ amneziawg__existing_private_key.stdout }}'
-      when: amneziawg__existing_private_key.stdout | length > 0
+      no_log: true
 
-- name: Generate new keypair
-  when: >
-    not amneziawg__config_file.stat.exists
-    or (amneziawg__existing_private_key.stdout | default('') | length == 0)
+- name: Generate new private key
+  when: amneziawg__fact_private_key is not defined
   block:
-    - name: Use provided private key
-      when: amneziawg_private_key is defined and amneziawg_private_key | length > 0
-      ansible.builtin.set_fact:
-        amneziawg__fact_private_key: '{{ amneziawg_private_key }}'
-
-    - name: Generate new private key
-      when: amneziawg_private_key is not defined or amneziawg_private_key | length == 0
+    - name: Run awg genkey
       ansible.builtin.command:
         cmd: awg genkey
       register: amneziawg__generated_private_key
       changed_when: false
+      no_log: true
 
     - name: Set private key fact from generated key
-      when: amneziawg_private_key is not defined or amneziawg_private_key | length == 0
       ansible.builtin.set_fact:
         amneziawg__fact_private_key: '{{ amneziawg__generated_private_key.stdout }}'
+      no_log: true
 
+# Ключ подаётся через stdin, а не в командной строке: так его не видно ни в
+# выводе ansible, ни в списке процессов на хосте.
 - name: Derive public key from private key
-  ansible.builtin.shell: |
-    set -euo pipefail
-    echo '{{ amneziawg__fact_private_key }}' | awg pubkey
-  args:
-    executable: /bin/bash
+  ansible.builtin.command:
+    cmd: awg pubkey
+    stdin: '{{ amneziawg__fact_private_key }}'
   register: amneziawg__public_key
   changed_when: false
+  no_log: true
 
 - name: Set public key fact for peer sharing
   ansible.builtin.set_fact:
