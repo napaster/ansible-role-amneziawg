@@ -16,9 +16,22 @@
   when:
     - not amneziawg_interface_restart
     - amneziawg__interface_check.rc == 0
+  # syncconf не трогает [Interface]: смена Address не доезжает до живого интерфейса, а сервер
+  # пускает пира только с новым адресом (kemerovo 02.10–08.10.2026: 5 суток трафик в никуда при свежем
+  # handshake). Поэтому после syncconf сверяем адреса с конфигом и правим их на месте, без рестарта.
   ansible.builtin.shell: |
     set -euo pipefail
-    awg syncconf {{ amneziawg_interface }} <(awg-quick strip {{ amneziawg_remote_directory }}/{{ amneziawg_interface }}.conf)
+    iface={{ amneziawg_interface }}
+    conf={{ amneziawg_remote_directory }}/{{ amneziawg_interface }}.conf
+    awg syncconf "$iface" <(awg-quick strip "$conf")
+    want=$(sed -nE 's/^[[:space:]]*Address[[:space:]]*=[[:space:]]*//Ip' "$conf" | tr ',' '\n' | tr -d ' \t\r' | grep -v '^$' || true)
+    have=$(ip -o addr show dev "$iface" | awk '{print $4}')
+    for a in $want; do
+      grep -qxF "$a" <<<"$have" || { ip addr add "$a" dev "$iface"; echo "added $a"; }
+    done
+    for a in $have; do
+      grep -qxF "$a" <<<"$want" || { ip addr del "$a" dev "$iface"; echo "removed $a"; }
+    done
   args:
     executable: /bin/bash
   listen:
